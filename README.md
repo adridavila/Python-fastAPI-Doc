@@ -1,8 +1,7 @@
 # Python-fastAPI-Doc
 Documentación técnica de herramienta CLI en Python con FastAPI y LMDB.
 
-Documentación técnica de CLIColaDescarga
-Objetivo del proyecto
+# Objetivo del proyecto
 
 CLIColaDescarga es el cliente de línea de comandos del sistema DPM. Su función principal es permitir que el usuario opere desde terminal los flujos del backend de descarga y consulta de información: fuentes de YouTube, fuentes RSS de noticias, tareas programadas, exportación de archivos, prioridades, monitoreo por WebSocket, logs y configuración local del servicio.
 
