@@ -1,5 +1,5 @@
 # Python-fastAPI-Doc
-Documentación técnica de herramienta CLI en Python con FastAPI y LMDB.
+Documentación técnica y arquitectura de herramienta CLI en Python con FastAPI y LMDB.
 
 # Objetivo del proyecto
 
@@ -685,4 +685,125 @@ Consideraciones de mantenimiento
     Mantener las rutas HTTP en endpoints y no en vistas, excepto en casos legacy como consultas directas de YoutubeView y EditorialView.
     Si se formalizan pruebas, mover los scripts de app/test a una suite con pytest y mocks de HTTP/WebSocket.
     Corregir nombres o textos antiguos en app/instrucciones.txt para que coincidan con los comandos reales: por ejemplo listar en lugar de list, estado en lugar de status en la mayoría de módulos, status en tareas, e iniciar_descarga en lugar de start_scheduler.
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+# Forma de trabajo del sistema
+
+El sistema implementa una cola de prioridad para gestionar las solicitudes de descarga de los usuarios. Cada enlace enviado es encolado junto con un nivel de prioridad que determina el orden de procesamiento.
+
+Un componente orquestador se encarga de clasificar los enlaces recibidos y asignarlos a la cola correspondiente según su tipo y prioridad. Los consumidores de eventos procesan las colas de forma asíncrona, ejecutando las descargas sin bloquear la interacción del usuario.
+
+Este diseño permite desacoplar la recepción de solicitudes de su ejecución, mejorando la escalabilidad y garantizando un procesamiento eficiente de las descargas.
+
+![[cola-prioridad.png]]
+Arquitectura del sistema
+
+Las arquitectura del sistema se describe mediante múltiples vistas arquitecturas. A continuación se describe cada arquitectura y las razones de su uso en el sistema.
+Arquitectura monolítica modular
+
+![[arquitectura-modular.png]]
+¿Qué es la arquitectura monolítica?
+
+La arquitectura monolítica es una forma de organizar un proyecto, la cual esta acoplada para trabajar en conjunto, lo cual la hace fácil de utilizar para proyectos pequeños. Las limitaciones que tiene son bastantes, al ir creciendo la aplicación o el sistema no es fácil de escalar el proyecto, por lo tanto darle mantenimiento a este tipo de arquitectura se vuelve un reto.
+Monolítico modular
+
+Para solucionar alguno de los inconvenientes de un monolítico se pude desacoplar la lógica del proyecto en base a módulos, el cual permite una mejor distribución de carga de trabajo, darle mantenimiento a una aplicación ya no es tan complicado, al tener varios módulos, se puede trabajar con la parte del sistema a refactorizar, actualizar o incluso a eliminar además es posible escalar este tipo de arquitectura a una arquitectura de microservicios, al tener en varias partes el sistema se puede poner en un servicio independiente.
+
+Para tener un mejor control y poder escalar el proyecto a microservicios en caso de ser necesario se decidió trabajar con la arquitectura monolítica modular.
+Vistas de la organización interna del Back-End
+
+Esta vista describe la organización interna del Back-End como un monolito modular, donde cada módulo encapsula un dominio específico del negocio.
+
+Cola-Descarga/
+│── app/
+│   │
+│   ├── core/    #Hilo de conexión para el funcionamiento del sistema        
+|   |   ├── enums/
+|   |   ├── models/
+|	|   ├── app_state.py 
+|	|   ├── main.py 
+│   │
+│   ├── db/      # Conexión a la base de datos (lmdb)       
+│   │   ├── Conexion.py
+│   ├── modules/ # Modulos del sistema  
+│   │   ├── archivos/ 
+│   │   ├── coladedescarga/
+│   │   ├── fuentes/
+│   │   ├── logs/
+│   │   ├── noticias/
+│   │   ├── notificaciones/
+│   │   ├── prioridad/
+│   │   ├── tareas/
+│   │   ├── websockets/
+│   │   ├── youtube/
+|   |   ├── tests/ 
+│   |   ├── workers/ # Levantar procesos de cada modulo  
+│   |   ├── main.py # Archivo principal del proyecto  
+|	|	    ├── WorkerManagerService.py
+|	|            
+│   ├── main.py  # Procesamiento de la API                           
+├── .gitignore                # Ignorar carpetas y archivos
+├── poetry.lock              # Dependencias con poetry
+└── requirements.txt         # Dependencias
+
+Estructuración del proyecto de manera visual para su mejor entendimiento, cada archivo y carpeta es fundamental para elaborar un control mas adecuado el desarrollo y mantenimiento del sistema.
+Arquitectura cliente servidor
+
+El funcionamiento para la arquitectura de comunicación con el sistema es una arquitectura cliente servidor, para tener menos riesgos.
+
+El cliente consulta o realizar una operación al servidor, el servidor recibe la pregunta del cliente el cual envía una petición a la base de datos para poder regresar una respuesta al cliente.
+
+En los clientes que pueden comunicarse con el sistema son los siguientes:
+
+    Navegador web
+    App móvil
+    App de escritorio
+
+El servidor por nuestra parte es una:
+
+    API REST maneja que solicitudes HTTP, WSS y devuelve archivos JSON
+    La lógica consiste en enviar validar enlaces estilo URL para retornar la información correspondiente.
+    La información será gestionada por medio de consultas desde el servidor a la base de datos, el servidor recibirá una respuesta donde será valida para enviar el mensaje correspondiente al cliente.
+
+El cliente y el servidor se comunicaran por el protocolo HTTP O WSS.
+
+![[arquitectura_cliente_servidor.png]] Se muestra una imagen de la arquitectura cliente servidor del sistema.
+Arquitectura por capas
+
+Cada módulo del sistema implementa internamente una arquitectura por capas, donde las responsabilidades se separan en presentación, aplicación, dominio y persistencia. Esta estructura se replica de forma consistente en todos los módulos, favoreciendo la mantenibilidad y escalabilidad del sistema.
+Estructura de cada modulo por capas
+
+nombre_modulo/
+ ├── routers/        → Capa de Presentación
+ ├── services/       → Capa de Aplicación / Negocio
+ ├── models/         → Capa de Dominio / Datos
+ ├── repositories/   → Persistencia (si aplica)
+ ├── utils/          → Soporte transversal
+
+A continuación se muestra la descripción de cada sección de la arquitectura en capas por modulo.
+Carpeta 	Capa arquitectónica 	Responsabilidad
+routers 	Presentación 	Entrada HTTP, validación básica
+services 	Aplicación 	Lógica de negocio
+models 	Dominio / Datos 	Entidades, esquemas
+enums 	Dominio 	Estados, reglas
+repositories 	Persistencia 	Acceso a datos
+utils 	Infraestructura 	Funciones comunes
+El sistema no esta atado a no crear mas carpetas para el sistema, cada modulo puede tener varias carpetas. 		
+Protocolos de comunicación
+Protocolo HTTP
+
+El sistema recibe respuestas http para poder comunicarse con la base de datos, entre el cliente y el servidor. Haciendo mas cómodo la forma de enviar y recibir información. Lo cual facilita la forma de migrar de tener un cliente CLI a tener distintos clientes, webs, aplicaciones móviles o de escritorio.
+
+El cliente realiza un petición sea GET, POST, DELETE, PUT, PATCH al servidor. Este analiza el registro el tipo de ruta que se hace para enviar la información solicitada y que el usuario pueda visualizarla.
+
+![[protocolo-http.png]]
+Protocolo WSS
+
+Para la notificación de eventos en tiempo real, el sistema incorpora comunicación mediante WebSockets. Este mecanismo permite mantener una conexión persistente entre el cliente y el servidor, facilitando la transmisión inmediata de cambios de estado asociados a las descargas en cola.
+
+Los eventos generados por el procesamiento asíncrono (inicio, progreso o finalización de una descarga) son emitidos por el sistema y enviados a los clientes conectados a través del canal WebSocket. De esta manera, los clientes reaccionan a los eventos sin necesidad de realizar consultas constantes al servidor.
+
+![[protocolo-wss.png]]
 
